@@ -39,7 +39,7 @@ class MainActivity : Activity() {
             setPadding(0, 8, 0, 8)
         })
         root.addView(TextView(this).apply {
-            text = "Satu prompt, dikirim serentak ke beberapa AI. Tanpa PC."
+            text = "Satu prompt, dikirim serentak ke beberapa AI. Tanpa API key."
             textSize = 13f
             alpha = 0.7f
             gravity = Gravity.CENTER
@@ -55,36 +55,45 @@ class MainActivity : Activity() {
         }
         root.addView(prompt)
 
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 12, 0, 12)
-        }
-        buttons.addView(Button(this).apply {
-            text = "Kirim"
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f)
+        val runBtn = Button(this).apply {
+            text = "Kirim ke Semua"
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnClickListener { kirim() }
-        }, 0)
-        buttons.addView(Button(this).apply {
-            text = "Pengaturan"
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        }, 1)
-        root.addView(buttons)
+        }
+        root.addView(runBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 12 })
 
         root.addView(TextView(this).apply {
-            text = "Pilih AI tujuan:"
+            text = "Pilih AI tujuan (yang \"login sendiri\" tekan Login dulu):"
             textSize = 14f
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 16, 0, 4)
         })
         picksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         for (p in Providers.ALL) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             val cb = CheckBox(this).apply {
                 text = p.name
                 isChecked = prefs.lastChoice(p.id)
-                setPadding(0, 4, 0, 4)
+                setPadding(0, 4, 4, 4)
             }
             boxes[p.id] = cb
-            picksBox.addView(cb)
+            row.addView(cb, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (p.web) {
+                row.addView(Button(this).apply {
+                    text = "Login"
+                    isAllCaps = false
+                    textSize = 13f
+                    setOnClickListener {
+                        startActivity(Intent(this@MainActivity, LoginWebViewActivity::class.java)
+                            .putExtra("platform", p.id))
+                    }
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ))
+            }
+            picksBox.addView(row)
         }
         root.addView(picksBox)
 
@@ -97,10 +106,7 @@ class MainActivity : Activity() {
         })
         root.addView(resultsBox)
 
-        setContentView(ScrollView(this).apply {
-            addView(root)
-            isVerticalScrollBarEnabled = true
-        })
+        setContentView(ScrollView(this).apply { addView(root) })
     }
 
     private fun kirim() {
@@ -136,20 +142,27 @@ class MainActivity : Activity() {
 
         for (id in chosen) {
             val (header, body) = cards[id]!!
-            pool.execute {
-                var result: String
-                var ok = true
-                try {
-                    result = Providers.ask(id, promptText, prefs)
-                } catch (e: Exception) {
-                    result = e.message ?: e.toString()
-                    ok = false
-                }
-                val finalText = result
+            val name = Providers.ALL.first { it.id == id }.name
+            fun finish(ok: Boolean, text: String) {
                 runOnUiThread {
-                    val name = Providers.ALL.first { it.id == id }.name
                     header.text = if (ok) "$name — selesai" else "$name — GAGAL"
-                    body.text = finalText
+                    body.text = text
+                }
+            }
+            val webCfg = WebChat.byId(id)
+            if (webCfg != null) {
+                // penyedia berbasis situs: otomasi WebView di thread utama
+                WebChat.run(this, webCfg, promptText, object : WebChat.Callback {
+                    override fun onDone(text: String) = finish(true, text)
+                    override fun onFail(msg: String) = finish(false, msg)
+                })
+            } else {
+                pool.execute {
+                    try {
+                        finish(true, Providers.ask(id, promptText))
+                    } catch (e: Exception) {
+                        finish(false, e.message ?: e.toString())
+                    }
                 }
             }
         }

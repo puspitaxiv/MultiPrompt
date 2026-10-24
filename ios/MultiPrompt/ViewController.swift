@@ -13,18 +13,9 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         title = "MultiPrompt"
         view.backgroundColor = UIColor(red: 0.062, green: 0.078, blue: 0.094, alpha: 1)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Kunci", style: .plain, target: self, action: #selector(openKeys))
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: topLayoutGuide.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomLayoutGuide.topAnchor)
-        ])
-
         stack.axis = .vertical
         stack.spacing = 10
         stack.isLayoutMarginsRelativeArrangement = true
@@ -32,6 +23,10 @@ class ViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stack)
         NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             stack.topAnchor.constraint(equalTo: scrollView.topAnchor),
             stack.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
@@ -40,7 +35,7 @@ class ViewController: UIViewController {
         ])
 
         let info = UILabel()
-        info.text = "Satu prompt, dikirim serentak ke beberapa AI. Tanpa PC."
+        info.text = "Satu prompt, dikirim serentak ke beberapa AI. Tanpa API key — yang \"login sendiri\" tekan Login sekali."
         info.font = info.font.withSize(13)
         info.textColor = UIColor.lightGray
         info.numberOfLines = 0
@@ -53,8 +48,8 @@ class ViewController: UIViewController {
         promptView.delegate = self
         promptView.layer.cornerRadius = 6
         promptView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
-        stack.addArrangedSubview(promptView)
         promptView.heightAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
+        stack.addArrangedSubview(promptView)
 
         placeholder.text = "Tulis prompt di sini…"
         placeholder.textColor = UIColor.lightGray
@@ -65,12 +60,6 @@ class ViewController: UIViewController {
             placeholder.topAnchor.constraint(equalTo: promptView.topAnchor, constant: 12),
             placeholder.leadingAnchor.constraint(equalTo: promptView.leadingAnchor, constant: 12)
         ])
-
-        let pickLabel = UILabel()
-        pickLabel.text = "Pilih AI tujuan:"
-        pickLabel.font = UIFont.boldSystemFont(ofSize: 14)
-        pickLabel.textColor = .white
-        stack.addArrangedSubview(pickLabel)
 
         for p in Providers.all {
             let row = UIView()
@@ -91,13 +80,23 @@ class ViewController: UIViewController {
                 lab.topAnchor.constraint(equalTo: row.topAnchor, constant: 6),
                 lab.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -6),
                 lab.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-                sw.leadingAnchor.constraint(greaterThanOrEqualTo: lab.trailingAnchor, constant: 8),
+                sw.leadingAnchor.constraint(equalTo: row.trailingAnchor, constant: -60),
                 sw.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-                sw.centerYAnchor.constraint(equalTo: lab.centerYAnchor),
+                sw.centerYAnchor.constraint(equalTo: lab.centerY),
                 lab.trailingAnchor.constraint(lessThanOrEqualTo: sw.leadingAnchor, constant: -8)
             ])
             switches.append((p.id, sw))
             stack.addArrangedSubview(row)
+
+            if p.web {
+                let btn = UIButton(type: .system)
+                btn.setTitle("Login \(p.name)", for: .normal)
+                btn.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+                btn.tag = Providers.all.firstIndex(where: { $0.id == p.id }) ?? -1
+                btn.addTarget(self, action: #selector(openLogin(_:)), for: .touchUpInside)
+                btn.contentHorizontalAlignment = .leading
+                stack.addArrangedSubview(btn)
+            }
         }
 
         let runBtn = UIButton(type: .system)
@@ -120,7 +119,7 @@ class ViewController: UIViewController {
         if UserDefaults.standard.object(forKey: key) != nil {
             return UserDefaults.standard.bool(forKey: key)
         }
-        return id.hasPrefix("ddg") || id == "pollination"
+        return true
     }
 
     @objc private func saveChoice(_ sender: UISwitch) {
@@ -129,8 +128,12 @@ class ViewController: UIViewController {
         }
     }
 
-    @objc private func openKeys() {
-        navigationController?.pushViewController(KeysViewController(), animated: true)
+    @objc private func openLogin(_ sender: UIButton) {
+        let idx = sender.tag
+        guard idx >= 0, idx < Providers.all.count else { return }
+        let pid = Providers.all[idx].id
+        guard let cfg = WebChat.byId(pid) else { return }
+        navigationController?.pushViewController(LoginWebViewController(cfg: cfg), animated: true)
     }
 
     @objc private func kirim() {
@@ -156,7 +159,7 @@ class ViewController: UIViewController {
             resultsStack.addArrangedSubview(head)
             resultsStack.addArrangedSubview(body)
 
-            Providers.ask(id, prompt) { text, err in
+            func show(_ text: String?, _ err: String?) {
                 if let e = err {
                     head.text = "\(provider.name) — GAGAL"
                     body.text = e
@@ -165,6 +168,12 @@ class ViewController: UIViewController {
                     body.text = text
                 }
             }
+
+            if provider.web, let cfg = WebChat.byId(id) {
+                WebChat.run(cfg, prompt: prompt, in: self) { text, err in show(text, err) }
+            } else {
+                Providers.ask(id, prompt) { text, err in show(text, err) }
+            }
         }
     }
 }
@@ -172,86 +181,5 @@ class ViewController: UIViewController {
 extension ViewController: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         placeholder.isHidden = !textView.text.isEmpty
-    }
-}
-
-class KeysViewController: UIViewController {
-
-    private let fields: [(String, String)] = [
-        ("OpenAI API key", "openai_key"),
-        ("Google Gemini API key", "gemini_key"),
-        ("OpenRouter API key", "openrouter_key"),
-        ("OpenRouter model (kosong = llama free)", "openrouter_model")
-    ]
-    private var textFields = [String: UITextField]()
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        title = "API Keys"
-        view.backgroundColor = UIColor(red: 0.062, green: 0.078, blue: 0.094, alpha: 1)
-
-        let scroll = UIScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scroll)
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.isLayoutMarginsRelativeArrangement = true
-        stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
-        scroll.addSubview(stack)
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: topLayoutGuide.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor),
-            stack.widthAnchor.constraint(equalTo: scroll.widthAnchor)
-        ])
-
-        let info = UILabel()
-        info.text = "Isi key bila punya. DuckDuckGo & Pollinations tidak butuh key."
-        info.font = info.font.withSize(13)
-        info.textColor = UIColor.lightGray
-        info.numberOfLines = 0
-        stack.addArrangedSubview(info)
-
-        for (label, key) in fields {
-            let lab = UILabel()
-            lab.text = label
-            lab.font = UIFont.systemFont(ofSize: 14)
-            lab.textColor = .white
-            let tf = UITextField()
-            tf.text = Prefs.key(key)
-            tf.placeholder = "kosongkan jika tidak dipakai"
-            tf.backgroundColor = UIColor(red: 0.094, green: 0.122, blue: 0.149, alpha: 1)
-            tf.textColor = .white
-            tf.font = UIFont.systemFont(ofSize: 15)
-            tf.borderStyle = .roundedRect
-            tf.autocorrectionType = .no
-            tf.heightAnchor.constraint(equalToConstant: 40).isActive = true
-            textFields[key] = tf
-            stack.addArrangedSubview(lab)
-            stack.addArrangedSubview(tf)
-        }
-
-        let save = UIButton(type: .system)
-        save.setTitle("Simpan", for: .normal)
-        save.titleLabel?.font = UIFont.boldSystemFont(ofSize: 17)
-        save.backgroundColor = UIColor(red: 0.184, green: 0.506, blue: 0.969, alpha: 1)
-        save.layer.cornerRadius = 8
-        save.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        save.addTarget(self, action: #selector(simpan), for: .touchUpInside)
-        stack.addArrangedSubview(save)
-    }
-
-    @objc private func simpan() {
-        for (key, tf) in textFields {
-            Prefs.setKey(key, tf.text ?? "")
-        }
-        navigationController?.popViewController(animated: true)
     }
 }

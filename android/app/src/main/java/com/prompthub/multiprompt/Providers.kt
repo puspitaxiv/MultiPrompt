@@ -52,19 +52,22 @@ object Http {
 data class Provider(
     val id: String,
     val name: String,
-    val keyPref: String? = null // null = tanpa login/key
+    val web: Boolean = false // true = butuh login manual via WebView
 )
 
 object Providers {
     val ALL = listOf(
+        Provider("chatgpt", "ChatGPT (login sendiri)", web = true),
+        Provider("claude", "Claude (login sendiri)", web = true),
+        Provider("gemini", "Google Gemini (login sendiri)", web = true),
+        Provider("copilot", "Microsoft Copilot (login sendiri)", web = true),
+        Provider("grok", "Grok (login sendiri)", web = true),
+        Provider("deepseek", "DeepSeek (login sendiri)", web = true),
         Provider("ddg-gpt", "DuckDuckGo · GPT-4o mini"),
         Provider("ddg-claude", "DuckDuckGo · Claude Sonnet"),
         Provider("ddg-llama", "DuckDuckGo · Llama 3.1 70B"),
         Provider("ddg-qwen", "DuckDuckGo · Qwen 2.5 72B"),
-        Provider("pollination", "Pollinations (gratis)"),
-        Provider("openai", "OpenAI (API key)", "openai_key"),
-        Provider("gemini", "Google Gemini (API key)", "gemini_key"),
-        Provider("openrouter", "OpenRouter (API key)", "openrouter_key")
+        Provider("pollination", "Pollinations (gratis)")
     )
 
     val DDG_MODELS = mapOf(
@@ -74,18 +77,11 @@ object Providers {
         "ddg-qwen" to "qwen/qwen-2.5-72b-instruct"
     )
 
-    fun ask(id: String, prompt: String, prefs: Prefs): String = when (id) {
+    /** Hanya untuk penyedia HTTP (bukan web:true). */
+    fun ask(id: String, prompt: String): String = when (id) {
         in DDG_MODELS.keys -> duckDuckGo(DDG_MODELS[id]!!, prompt)
         "pollination" -> pollinations(prompt)
-        "openai" -> openAi(prompt, requireKey(prefs.openaiKey))
-        "gemini" -> gemini(prompt, requireKey(prefs.geminiKey))
-        "openrouter" -> openRouter(prompt, requireKey(prefs.openRouterKey), prefs.openRouterModel)
         else -> throw AiException("Provider tidak dikenal: $id")
-    }
-
-    private fun requireKey(key: String): String {
-        if (key.isBlank()) throw AiException("API key belum diisi (buka Pengaturan)")
-        return key.trim()
     }
 
     // ---- DuckDuckGo AI chat (tanpa akun, tidak resmi, bisa berubah sewaktu-waktu) ----
@@ -165,47 +161,5 @@ object Providers {
         val txt = Http.text("GET", url)
         if (txt.isBlank()) throw AiException("Pollinations mengirim balasan kosong")
         return txt.trim()
-    }
-
-    // ---- OpenAI ----
-    private fun openAi(prompt: String, key: String): String {
-        val body = JSONObject()
-            .put("model", "gpt-4o-mini")
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            .toString()
-        val res = Http.text(
-            "POST", "https://api.openai.com/v1/chat/completions",
-            mapOf("Authorization" to "Bearer $key", "Content-Type" to "application/json"), body
-        )
-        return JSONObject(res).getJSONArray("choices").getJSONObject(0)
-            .getJSONObject("message").getString("content").trim()
-    }
-
-    // ---- Google Gemini ----
-    private fun gemini(prompt: String, key: String): String {
-        val body = JSONObject()
-            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-            .toString()
-        val res = Http.text(
-            "POST",
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${URLEncoder.encode(key, "UTF-8")}",
-            mapOf("Content-Type" to "application/json"), body
-        )
-        return JSONObject(res).getJSONArray("candidates").getJSONObject(0)
-            .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
-    }
-
-    // ---- OpenRouter ----
-    private fun openRouter(prompt: String, key: String, model: String): String {
-        val body = JSONObject()
-            .put("model", if (model.isBlank()) "meta-llama/llama-3.3-70b-instruct:free" else model)
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            .toString()
-        val res = Http.text(
-            "POST", "https://openrouter.ai/api/v1/chat/completions",
-            mapOf("Authorization" to "Bearer $key", "Content-Type" to "application/json"), body
-        )
-        return JSONObject(res).getJSONArray("choices").getJSONObject(0)
-            .getJSONObject("message").getString("content").trim()
     }
 }

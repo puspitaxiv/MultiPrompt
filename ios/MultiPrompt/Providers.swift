@@ -3,29 +3,23 @@ import Foundation
 struct Provider {
     let id: String
     let name: String
-    let keyPref: String? // nil = tanpa key/login
-}
-
-enum Prefs {
-    static func key(_ name: String) -> String {
-        return (UserDefaults.standard.string(forKey: name) ?? "").trimmingCharacters(in: .whitespaces)
-    }
-    static func setKey(_ name: String, _ value: String) {
-        UserDefaults.standard.set(value.trimmingCharacters(in: .whitespaces), forKey: name)
-    }
+    let web: Bool // true = login manual via WKWebView
 }
 
 enum Providers {
 
     static let all: [Provider] = [
-        Provider(id: "ddg-gpt", name: "DuckDuckGo · GPT-4o mini", keyPref: nil),
-        Provider(id: "ddg-claude", name: "DuckDuckGo · Claude Sonnet", keyPref: nil),
-        Provider(id: "ddg-llama", name: "DuckDuckGo · Llama 3.1 70B", keyPref: nil),
-        Provider(id: "ddg-qwen", name: "DuckDuckGo · Qwen 2.5 72B", keyPref: nil),
-        Provider(id: "pollination", name: "Pollinations (gratis)", keyPref: nil),
-        Provider(id: "openai", name: "OpenAI (API key)", keyPref: "openai_key"),
-        Provider(id: "gemini", name: "Google Gemini (API key)", keyPref: "gemini_key"),
-        Provider(id: "openrouter", name: "OpenRouter (API key)", keyPref: "openrouter_key")
+        Provider(id: "chatgpt", name: "ChatGPT (login sendiri)", web: true),
+        Provider(id: "claude", name: "Claude (login sendiri)", web: true),
+        Provider(id: "gemini", name: "Google Gemini (login sendiri)", web: true),
+        Provider(id: "copilot", name: "Microsoft Copilot (login sendiri)", web: true),
+        Provider(id: "grok", name: "Grok (login sendiri)", web: true),
+        Provider(id: "deepseek", name: "DeepSeek (login sendiri)", web: true),
+        Provider(id: "ddg-gpt", name: "DuckDuckGo · GPT-4o mini", web: false),
+        Provider(id: "ddg-claude", name: "DuckDuckGo · Claude Sonnet", web: false),
+        Provider(id: "ddg-llama", name: "DuckDuckGo · Llama 3.1 70B", web: false),
+        Provider(id: "ddg-qwen", name: "DuckDuckGo · Qwen 2.5 72B", web: false),
+        Provider(id: "pollination", name: "Pollinations (gratis)", web: false)
     ]
 
     static let ddgModels: [String: String] = [
@@ -35,40 +29,26 @@ enum Providers {
         "ddg-qwen": "qwen/qwen-2.5-72b-instruct"
     ]
 
-    static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 12_5_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Mobile/15E148 Safari/604.1"
+    static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-    // completion dipanggil di thread utama
+    /// Hanya untuk penyedia HTTP (bukan web:true). completion di thread utama.
     static func ask(_ id: String, _ prompt: String, _ completion: @escaping (String?, String?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            var resultText: String?
-            var resultErr: String?
+            var text: String?
+            var err: String?
             do {
-                switch id {
-                case let s where ddgModels[s] != nil:
-                    resultText = try duckDuckGo(model: ddgModels[s]!, prompt: prompt)
-                case "pollination":
-                    resultText = try pollinations(prompt: prompt)
-                case "openai":
-                    resultText = try openAI(prompt: prompt, key: try needKey("openai_key"))
-                case "gemini":
-                    resultText = try gemini(prompt: prompt, key: try needKey("gemini_key"))
-                case "openrouter":
-                    resultText = try openRouter(prompt: prompt, key: try needKey("openrouter_key"),
-                                                model: Prefs.key("openrouter_model"))
-                default:
+                if let model = ddgModels[id] {
+                    text = try duckDuckGo(model: model, prompt: prompt)
+                } else if id == "pollination" {
+                    text = try pollinations(prompt: prompt)
+                } else {
                     throw error("Provider tidak dikenal: \(id)")
                 }
             } catch let e {
-                resultErr = e.localizedDescription
+                err = e.localizedDescription
             }
-            DispatchQueue.main.async { completion(resultText, resultErr) }
+            DispatchQueue.main.async { completion(text, err) }
         }
-    }
-
-    private static func needKey(_ pref: String) throws -> String {
-        let k = Prefs.key(pref)
-        if k.isEmpty { throw error("API key belum diisi (buka menu Kunci)") }
-        return k
     }
 
     static func error(_ msg: String) -> NSError {
@@ -91,10 +71,9 @@ enum Providers {
         var outResp: URLResponse?
         var outErr: Error?
         let sem = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: req) { d, r, e in
+        URLSession.shared.dataTask(with: req) { d, r, e in
             outData = d; outResp = r; outErr = e; sem.signal()
-        }
-        task.resume()
+        }.resume()
         sem.wait()
         if let e = outErr { throw error("Jaringan: \(e.localizedDescription)") }
         guard let http = outResp as? HTTPURLResponse else { throw error("Respons bukan HTTP") }
@@ -105,9 +84,9 @@ enum Providers {
         return (outData ?? Data(), http)
     }
 
-    private static func jsonString(_ obj: Any) throws -> String {
-        let data = try JSONSerialization.data(withJSONObject: obj)
-        guard let s = String(data: data, encoding: .utf8) else { throw error("Gagal enkripsi JSON") }
+    static func jsonStringTry(_ obj: Any) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj),
+              let s = String(data: data, encoding: .utf8) else { return "{}" }
         return s
     }
 
@@ -163,10 +142,6 @@ enum Providers {
         return out
     }
 
-    private static func jsonStringTry(_ obj: Any) -> String {
-        return (try? jsonString(obj)) ?? "{}"
-    }
-
     private static func firstMatch(_ text: String, pattern: String) -> String? {
         guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
@@ -188,64 +163,5 @@ enum Providers {
         let txt = String(data: d, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if txt.isEmpty { throw error("Pollinations mengirim balasan kosong") }
         return txt
-    }
-
-    // MARK: - OpenAI
-
-    private static func openAI(prompt: String, key: String) throws -> String {
-        let body: [String: Any] = [
-            "model": "gpt-4o-mini",
-            "messages": [["role": "user", "content": prompt]]
-        ]
-        let (d, _) = try send("POST", "https://api.openai.com/v1/chat/completions",
-                              ["Authorization": "Bearer \(key)", "Content-Type": "application/json"],
-                              jsonStringTry(body).data(using: .utf8))
-        let o = try json(d) as? [String: Any] ?? [:]
-        guard let choices = o["choices"] as? [[String: Any]],
-              let msg = choices.first?["message"] as? [String: Any],
-              let content = msg["content"] as? String else {
-            throw error("Format respons OpenAI tidak dikenal")
-        }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - Google Gemini
-
-    private static func gemini(prompt: String, key: String) throws -> String {
-        let body: [String: Any] = [
-            "contents": [["parts": [["text": prompt]]]]
-        ]
-        let enc = key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key
-        let (d, _) = try send("POST",
-                              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(enc)",
-                              ["Content-Type": "application/json"], jsonStringTry(body).data(using: .utf8))
-        let o = try json(d) as? [String: Any] ?? [:]
-        guard let cands = o["candidates"] as? [[String: Any]],
-              let content = cands.first?["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let text = parts.first?["text"] as? String else {
-            throw error("Format respons Gemini tidak dikenal")
-        }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - OpenRouter
-
-    private static func openRouter(prompt: String, key: String, model: String) throws -> String {
-        let useModel = model.isEmpty ? "meta-llama/llama-3.3-70b-instruct:free" : model
-        let body: [String: Any] = [
-            "model": useModel,
-            "messages": [["role": "user", "content": prompt]]
-        ]
-        let (d, _) = try send("POST", "https://openrouter.ai/api/v1/chat/completions",
-                              ["Authorization": "Bearer \(key)", "Content-Type": "application/json"],
-                              jsonStringTry(body).data(using: .utf8))
-        let o = try json(d) as? [String: Any] ?? [:]
-        guard let choices = o["choices"] as? [[String: Any]],
-              let msg = choices.first?["message"] as? [String: Any],
-              let content = msg["content"] as? String else {
-            throw error("Format respons OpenRouter tidak dikenal")
-        }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
