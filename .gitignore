@@ -1,0 +1,13 @@
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+local.properties
+
+# iOS
+ios/build/
+ios/MultiPrompt.xcodeproj/
+
+# hasil
+*.apk
+*.ipa

@@ -1,0 +1,28 @@
+name: MultiPrompt
+options:
+  bundleIdPrefix: com.prompthub
+  deploymentTarget:
+    iOS: "12.0"
+  createIntermediateGroups: true
+targets:
+  MultiPrompt:
+    type: application
+    platform: iOS
+    sources:
+      - MultiPrompt
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prompthub.multiprompt
+        PRODUCT_NAME: MultiPrompt
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_FILE: MultiPrompt/Info.plist
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        SWIFT_VERSION: "5.0"
+schemes:
+  MultiPrompt:
+    build:
+      targets:
+        MultiPrompt: all
+    run:
+      config: Release
