@@ -82,7 +82,7 @@ class ViewController: UIViewController {
                 lab.leadingAnchor.constraint(equalTo: row.leadingAnchor),
                 sw.leadingAnchor.constraint(equalTo: row.trailingAnchor, constant: -60),
                 sw.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-                sw.centerYAnchor.constraint(equalTo: lab.centerY),
+                sw.centerYAnchor.constraint(equalTo: lab.centerYAnchor),
                 lab.trailingAnchor.constraint(lessThanOrEqualTo: sw.leadingAnchor, constant: -8)
             ])
             switches.append((p.id, sw))
