@@ -27,7 +27,7 @@ class ViewController: UIViewController {
 
         stack.axis = .vertical
         stack.spacing = 10
-        stack.layoutMarginsRelativeArrangement = true
+        stack.isLayoutMarginsRelativeArrangement = true
         stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stack)
@@ -93,7 +93,7 @@ class ViewController: UIViewController {
                 lab.leadingAnchor.constraint(equalTo: row.leadingAnchor),
                 sw.leadingAnchor.constraint(greaterThanOrEqualTo: lab.trailingAnchor, constant: 8),
                 sw.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-                sw.centerYAnchor.constraint(equalTo: lab.centerY),
+                sw.centerYAnchor.constraint(equalTo: lab.centerYAnchor),
                 lab.trailingAnchor.constraint(lessThanOrEqualTo: sw.leadingAnchor, constant: -8)
             ])
             switches.append((p.id, sw))
@@ -197,7 +197,7 @@ class KeysViewController: UIViewController {
         stack.axis = .vertical
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.layoutMarginsRelativeArrangement = true
+        stack.isLayoutMarginsRelativeArrangement = true
         stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
